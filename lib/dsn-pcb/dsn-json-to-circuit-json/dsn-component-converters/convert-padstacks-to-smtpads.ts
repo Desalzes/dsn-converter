@@ -7,7 +7,15 @@ const debug = Debug("dsn-converter:convertPadstacksToSmtpads")
 
 function getLayerFromPadstack(
   padstack: DsnPcb["library"]["padstacks"][number],
+  placeSide?: string,
 ) {
+  // Prefer DSN placement side when available: back-placed components must land on
+  // the KiCad "bottom" copper layer even if the padstack shape name doesn't carry
+  // an explicit "B." prefix.
+  if (placeSide === "back") return "bottom"
+  if (placeSide === "front") return "top"
+
+  // Fallback to padstack shape naming when placement side isn't provided.
   return padstack.shapes[0].layer.includes("B.") ? "bottom" : "top"
 }
 
@@ -154,11 +162,11 @@ export function convertPadstacksToSmtPads(
           width = Math.abs(maxX - minX) / 1000
           height = Math.abs(maxY - minY) / 1000
         } else if (pathShape) {
-          // For path shapes (oval/pill pads), width is the path width
-          // and height is the distance between path endpoints
+          // For path shapes (oval/pill pads), include rounded caps in the
+          // axis-aligned rect extents.
           const [x1, y1, x2, y2] = pathShape.coordinates
-          width = pathShape.width / 1000 // Convert μm to mm
-          height = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) / 1000
+          width = (Math.abs(x2 - x1) + pathShape.width) / 1000
+          height = (Math.abs(y2 - y1) + pathShape.width) / 1000
         } else if (circleShape) {
           // Handle circle shape
           const radius = circleShape.diameter / 2 / 1000
@@ -187,7 +195,7 @@ export function convertPadstacksToSmtPads(
           !!polygonShape && !!rectangleDimensionsFromPolygon
 
         if (polygonShape && !shouldImportPolygonAsRect) {
-          const layer = getLayerFromPadstack(padstack)
+          const layer = getLayerFromPadstack(padstack, side)
           debug("determining layer with padstack shapes", {
             shapes: padstack.shapes,
             layer,
@@ -206,7 +214,7 @@ export function convertPadstacksToSmtPads(
             port_hints: [pin.pin_number.toString()],
           }
         } else if (rectShape || pathShape || shouldImportPolygonAsRect) {
-          const layer = getLayerFromPadstack(padstack)
+          const layer = getLayerFromPadstack(padstack, side)
           debug("determining layer with padstack shapes", {
             shapes: padstack.shapes,
             layer,
